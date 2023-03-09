@@ -1,9 +1,25 @@
+"""
+    Database convertor class
+
+    Convertor for data types:
+    SQL-Alchemy has it's own Type definitions: sqlalchemy.sql.sqltypes
+    These are the types that are returned.
+    The DMS requires a specific set of definitions differing from what sql-alchemy outputs, we define the convertions here.
+    TODO. I'm assuming there will need to be a convertion table for types. Existing types below are from postgres.
+    class sqlalchemy.types.TypeEngine
+"""
+
 from typing import DefaultDict
 import sqlalchemy
+from sqlalchemy.sql import sqltypes
 
 from mojap_metadata import Metadata
-import mojap_metadata.converters.postgres_converter.postgres_functions as pg
+import mojap_metadata.converters.database_converter.database_functions as dbfun
+
 from mojap_metadata.converters import BaseConverter
+
+#   source : target
+#   postgres : DMS
 
 _default_type_converter = {
     "int8": "int8",
@@ -33,23 +49,21 @@ _default_type_converter = {
 }
 
 
-class PostgresConverter(BaseConverter):
-    def __init__(self):
+class DatabaseConverter(BaseConverter):
+    def __init__(self, dialect):
         """
         Extracts and converts metadata to Metadata format
         """
 
-        super().__init__(None)
+        super().__init__()
         self._default_type_converter = _default_type_converter
+        self.dialect= dialect
+
 
     def convert_to_mojap_type(self, col_type: str) -> str:
-        """Converts our postgress datatypes to mojap-metadata types
-
-        Args:
-            ct (str): str representation of postgres column types
-
-        Returns:
-            str: String representation of our metadata column types
+        """ Converts our postgress datatypes to mojap-metadata types
+            Args:       ct (str):   String representation of source column types
+            Returns:    str:        String representation of metadata column types
         """
 
         output = (
@@ -59,10 +73,13 @@ class PostgresConverter(BaseConverter):
         )
         return output
 
+
     def get_object_meta(
         self, connection: sqlalchemy.engine.Engine, table: str, schema: str
     ) -> Metadata:
-        """Extracts metadata from table and converts to mojap metadata format
+        """ for a table, get metadata and convert to mojap metadata format.
+            
+            Convert sqlalchemy inpector result.
 
         Args:
             connection: Database connection
@@ -73,7 +90,7 @@ class PostgresConverter(BaseConverter):
             Metadata: Metadata object
         """
 
-        rows = pg.list_meta_data(connection, table, schema)
+        rows = dbfun.list_meta_data(connection, table, schema)
         columns = []
 
         for col in rows[0]:
@@ -93,9 +110,9 @@ class PostgresConverter(BaseConverter):
         meta_output = Metadata.from_dict(d)
         return meta_output
 
+
     def generate_from_meta(self, connection: sqlalchemy.engine.Engine) -> dict():
-        """Extracts metadata for all the schema and tables and returns a list
-        of Metadata
+        """ For all the schema and tables and returns a list of Metadata
 
         Args:
             connection: Database connection with database details
@@ -104,13 +121,13 @@ class PostgresConverter(BaseConverter):
             Metadata: Metadata object
         """
         meta_list_per_schema = DefaultDict(list)
-
-        schema_names = pg.list_schemas(
-            connection
+        
+        schema_names = dbfun.list_schemas(
+            connection, self.dialect
         )  # database name will be passed on in the connection
 
         for schema in sorted(schema_names):
-            table_names = pg.list_tables(connection, schema)
+            table_names = dbfun.list_tables(connection, schema)
 
             for table in table_names:
                 meta_output = self.get_object_meta(connection, table, schema)
